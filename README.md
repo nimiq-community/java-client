@@ -4,19 +4,59 @@
 
 ## Usage
 
-*Placeholder; Rather than starting to delve into the API docs, it'd be great to see what the client looks like in action in this lang plus a rough description what it does. The dev should be able to quickly determine whether the example fits the desired style and problem.*
+Here's a simple example that reports the info about the current head block and its miner account:
+```java
+NimiqClientFactory clientFactory = new NimiqClientFactory(new URL("http://localhost:8648/"));
+NimiqClient client = clientFactory.getClient();
+
+if (client.consensus() == ConsensusState.ESTABLISHED) {
+
+    int blockNumber = client.blockNumber();
+    Block block = client.getBlockByNumber(blockNumber, false);
+    long balance = client.getBalance(block.getMinerAddress());
+
+    System.out.printf("Head block #%d, %s mined by %s who has %.5f NIM.\n", 
+        block.getNumber(), block.getHash(), block.getMinerAddress(), NimiqUtils.lunasToCoins(balance));
+}
+```
 
 ## API
 
-*Placeholder; All the implemented methods with parameters, types, default values, return types*
+See [/docs](/docs) or [GitHub Pages](https://nimiq-community.github.io/java-client/).
+
+You can also refer to the [original specs](https://github.com/nimiq/core-js/wiki/JSON-RPC-API).
 
 ## Installation
 
-*Placeholder; how to add this client to a project. Each language comes with a package manager. To be useful for developers, add a package description file that works with the most commonly used package manager for this language. For example have a `package.json` file for JavaScript or `pom.xml` for Java.*
+Add the dependency to your `pom.xml`:
+```xml
+<dependency>
+    <groupId>com.nimiq</groupId>
+    <artifactId>nimiq-rpc-client</artifactId>
+    <version>1.0</version>
+</dependency>
+```
+
+## Build
+
+```
+mvn -DskipTests source:jar javadoc:jar install
+```
+
+## Test
+
+You need a test Nimiq node started like this:
+```
+nodejs index.js --protocol=dumb --type=full --network=test --rpc
+```
+There must be a wallet funded with a few hundred NIM. To run the test:
+```
+mvn test
+```
 
 ## Contributions
 
-This implementation was originally contributed by [*Placeholder; Your name with link to GitHub*](https://github.com/nimiq/).
+This implementation was originally contributed by [Mat (a.k.a. Tomkha)](https://github.com/tomkha/).
 
 Please send your contributions as pull requests.
 Refer to the [issue tracker](issues) for ideas.
