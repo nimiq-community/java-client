@@ -3,6 +3,7 @@ package com.nimiq;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 /**
@@ -68,8 +69,10 @@ public class PeerInfo {
     private long timeOffset;
     private String headHash;
     private long latency;
-    private long rx;
-    private long tx;
+    @JsonProperty("rx")
+    private long bytesReceived;
+    @JsonProperty("tx")
+    private long bytesSent;
 
     /**
      * @return Peer id.
@@ -162,29 +165,29 @@ public class PeerInfo {
     /**
      * @return Bytes received.
      */
-    public long getRx() {
-        return rx;
+    public long getBytesReceived() {
+        return bytesReceived;
     }
 
-    public void setRx(long rx) {
-        this.rx = rx;
+    public void setBytesReceived(long bytesReceived) {
+        this.bytesReceived = bytesReceived;
     }
 
     /**
      * @return Bytes sent.
      */
-    public long getTx() {
-        return tx;
+    public long getBytesSent() {
+        return bytesSent;
     }
 
-    public void setTx(long tx) {
-        this.tx = tx;
+    public void setBytesSent(long bytesSent) {
+        this.bytesSent = bytesSent;
     }
 
     @Override
     public String toString() {
-        return "PeerInfo [address=" + address + ", addressState=" + addressState + ", connectionState="
-                + connectionState + ", headHash=" + headHash + ", id=" + id + ", latency=" + latency + ", rx=" + rx
-                + ", timeOffset=" + timeOffset + ", tx=" + tx + ", version=" + version + "]";
+        return "PeerInfo [address=" + address + ", addressState=" + addressState + ", bytesReceived=" + bytesReceived
+                + ", bytesSent=" + bytesSent + ", connectionState=" + connectionState + ", headHash=" + headHash
+                + ", id=" + id + ", latency=" + latency + ", timeOffset=" + timeOffset + ", version=" + version + "]";
     }
 }

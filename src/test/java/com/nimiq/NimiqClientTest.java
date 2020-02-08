@@ -86,6 +86,8 @@ public class NimiqClientTest {
             if (peer.getAddressState() == PeerInfo.AddressState.ESTABLISHED) {
                 assertEquals(PeerInfo.ConnectionState.ESTABLISHED, peer.getConnectionState());
                 assertNotNull(peer.getHeadHash());
+                assertTrue(peer.getBytesSent() > 0);
+                assertTrue(peer.getBytesReceived() > 0);
             }
         });
     }
