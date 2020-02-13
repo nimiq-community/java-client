@@ -158,7 +158,7 @@ public interface NimiqClient {
      *
      * @param hash Hash of a transaction
      * @return A transaction object or null when no transaction was found.
-     * @throws FIXME It actually throws 'Unknown transaction hash' when no transaction was found.
+     *         (FIXME It actually throws 'Unknown transaction hash' when no transaction was found.)
      * 
      * @see <a href="https://github.com/nimiq/core-js/wiki/JSON-RPC-API#getTransactionByHash">getTransactionByHash</a>
      */
@@ -474,8 +474,7 @@ public interface NimiqClient {
      *
      * @param number Height of the block.
      * @return Number of transactions in the block found, or null, when no block was
-     *         found.
-     * @throws FIXME It actually throws 'Invalid height' when no block was found.
+     *         found. (FIXME It actually throws 'Invalid height' when no block was found.)
      * 
      * @see <a href="https://github.com/nimiq/core-js/wiki/JSON-RPC-API#getBlockTransactionCountByNumber">getBlockTransactionCountByNumber</a>
      */
@@ -502,7 +501,7 @@ public interface NimiqClient {
      * @param includeTransactions If true it returns the full transaction objects,
      *                            if false only the hashes of the transactions.
      * @return A block object or null when no block was found.
-     * @throws FIXME It actually throws 'Invalid height' when no block was found.
+     *         (FIXME It actually throws 'Invalid height' when no block was found.)
      * 
      * @see <a href="https://github.com/nimiq/core-js/wiki/JSON-RPC-API#getBlockByNumber">getBlockByNumber</a>
      */
