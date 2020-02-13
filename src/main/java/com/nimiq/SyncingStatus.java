@@ -9,18 +9,18 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
  */
 @JsonInclude(Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class SyncStatus {
+public class SyncingStatus {
 
     private boolean syncing;
     private int startingBlock;
     private int currentBlock;
     private int highestBlock;
 
-    public SyncStatus() {
+    public SyncingStatus() {
         this.syncing = true;
     }
 
-    public SyncStatus(boolean syncing) {
+    public SyncingStatus(boolean syncing) {
         this.syncing = syncing;
     }
 
@@ -71,7 +71,7 @@ public class SyncStatus {
 
     @Override
     public String toString() {
-        return "SyncStatus [currentBlock=" + currentBlock + ", highestBlock=" + highestBlock + ", startingBlock="
+        return "SyncingStatus [currentBlock=" + currentBlock + ", highestBlock=" + highestBlock + ", startingBlock="
                 + startingBlock + ", syncing=" + syncing + "]";
     }
 }

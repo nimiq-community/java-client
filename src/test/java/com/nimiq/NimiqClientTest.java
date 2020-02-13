@@ -59,26 +59,26 @@ public class NimiqClientTest {
     // Network
 
     @Test
-    public void testPeerCount() {
-        assertTrue(client.peerCount() > 0);
+    public void testGetPeerCount() {
+        assertTrue(client.getPeerCount() > 0);
     }
 
     @Test
-    public void testSyncing() {
-        final SyncStatus status = client.syncing();
+    public void testGetSyncingStatus() {
+        final SyncingStatus status = client.getSyncingStatus();
         if (status.isSyncing()) {
             assertTrue(status.getHighestBlock() > 0);
         }
     }
 
     @Test
-    public void testConsensus() {
-        assertNotNull(client.consensus());
+    public void testGetConsensusState() {
+        assertNotNull(client.getConsensusState());
     }
 
     @Test
-    public void testPeerList() {
-        final List<PeerInfo> peers = client.peerList();
+    public void testGetPeerList() {
+        final List<PeerInfo> peers = client.getPeerList();
         assertFalse(peers.isEmpty());
         peers.forEach(peer -> {
             assertNotNull(peer.getId());
@@ -93,17 +93,20 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testPeerState() {
-        client.peerList().forEach(peer -> {
-            final PeerInfo state = client.peerState(peer.getAddress());
+    public void testGetPeerState() {
+        client.getPeerList().forEach(peer -> {
+            final PeerInfo state = client.getPeerState(peer.getAddress());
             assertEquals(peer.getId(), state.getId());
             assertEquals(peer.getAddress(), state.getAddress());
             assertEquals(peer.getAddressState(), state.getAddressState());
         });
+    }
 
+    @Test
+    public void testSetPeerState() {
         // try to connect to all new nodes
-        client.peerList().stream().filter(peer -> peer.getAddressState() == PeerInfo.AddressState.NEW).forEach(peer -> {
-            final PeerInfo state = client.peerState(peer.getAddress(), "connect");
+        client.getPeerList().stream().filter(peer -> peer.getAddressState() == PeerInfo.AddressState.NEW).forEach(peer -> {
+            final PeerInfo state = client.setPeerState(peer.getAddress(), "connect");
             assertNotNull(state.getConnectionState());
         });
     }
@@ -111,7 +114,7 @@ public class NimiqClientTest {
     // Transactions
 
     private String getSenderAddress(final long minValue) {
-        return client.accounts().stream().filter(account -> account.getBalance() >= minValue).findFirst()
+        return client.getAccounts().stream().filter(account -> account.getBalance() >= minValue).findFirst()
                 .map(Account::getAddress)
                 .orElseThrow(() -> new UnsupportedOperationException("Can't find account with enough balance"));
     }
@@ -222,14 +225,14 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testMempoolContent() {
+    public void testGetMempoolContent() {
         final String sender = getSenderAddress(100_00000);
 
         // Send a test transaction first
         final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 5_00000, MIN_FEE);
         final String txHash = client.sendTransaction(outTx);
 
-        final List<Transaction> txsWithoutDetails = client.mempoolContent(false);
+        final List<Transaction> txsWithoutDetails = client.getMempoolContent(false);
         assertTrue(txsWithoutDetails.size() > 0);
         assertTrue(txsWithoutDetails.stream().anyMatch(tx -> tx.getHash().equals(txHash)));
         txsWithoutDetails.forEach(tx -> {
@@ -241,7 +244,7 @@ public class NimiqClientTest {
             assertEquals(0, tx.getBlockNumber());
         });
 
-        final List<Transaction> txsWithDetails = client.mempoolContent(true);
+        final List<Transaction> txsWithDetails = client.getMempoolContent(true);
         assertTrue(txsWithDetails.size() > 0);
         assertTrue(txsWithDetails.stream().anyMatch(tx -> tx.getHash().equals(txHash)));
         txsWithDetails.forEach(tx -> {
@@ -255,7 +258,7 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testMempool() {
+    public void testGetMempool() {
         final String sender = getSenderAddress(100_00000);
 
         // Send several transactions with different fees
@@ -264,7 +267,7 @@ public class NimiqClientTest {
             client.sendTransaction(createTransaction(sender, FAUCET_ADDRESS, 3_00000, fee * MIN_FEE));
         });
 
-        final Mempool mempool = client.mempool();
+        final Mempool mempool = client.getMempool();
         assertTrue(mempool.getTotal() >= fees.length);
         final int total = Arrays.stream(mempool.getBuckets()).map(mempool::getNumberOfTransactions).sum();
         assertEquals(total, mempool.getTotal());
@@ -274,47 +277,47 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testMinFeePerByte() {
-        final long oldValue = client.minFeePerByte();
-        assertEquals(100, client.minFeePerByte(100));
-        assertEquals(oldValue, client.minFeePerByte(oldValue));
+    public void testGetSetMinFeePerByte() {
+        final long oldValue = client.getMinFeePerByte();
+        assertEquals(100, client.setMinFeePerByte(100));
+        assertEquals(oldValue, client.setMinFeePerByte(oldValue));
     }
 
     // Miner
 
     @Test
-    public void testMining() {
-        assertFalse(client.mining());
+    public void testIsMining() {
+        assertFalse(client.isMining());
     }
 
     @Test
-    public void testHashrate() {
-        assertEquals(0, client.hashrate());
+    public void testGetHashrate() {
+        assertEquals(0, client.getHashrate());
     }
 
     @Test
-    public void testMinerThreads() {
-        assertTrue(client.minerThreads() > 0);
+    public void testGetMinerThreads() {
+        assertTrue(client.getMinerThreads() > 0);
     }
 
     @Test
-    public void testMinerAddress() {
-        assertNotNull(client.minerAddress());
+    public void testGetMinerAddress() {
+        assertNotNull(client.getMinerAddress());
     }
 
     @Test
-    public void testPool() {
-        assertNull(client.pool());
+    public void testGetPoolAddress() {
+        assertNull(client.getPoolAddress());
     }
 
     @Test
-    public void testPoolConnectionState() {
-        assertNotEquals(0, client.poolConnectionState());
+    public void testGetPoolConnectionState() {
+        assertNotEquals(0, client.getPoolConnectionState());
     }
 
     @Test
-    public void testPoolConfirmedBalance() {
-        assertEquals(0, client.poolConfirmedBalance());
+    public void testGetPoolConfirmedBalance() {
+        assertEquals(0, client.getPoolConfirmedBalance());
     }
 
     @Test
@@ -347,8 +350,8 @@ public class NimiqClientTest {
     // Accounts
 
     @Test
-    public void testAccounts() {
-        final List<Account> accounts = client.accounts();
+    public void testGetAccounts() {
+        final List<Account> accounts = client.getAccounts();
         assertFalse(accounts.isEmpty());
         accounts.forEach(account -> {
             assertEquals(Account.Type.BASIC, account.getType());
@@ -365,7 +368,7 @@ public class NimiqClientTest {
         assertNull(wallet.getPrivateKey());
 
         // Try to find a new account by address
-        assertTrue(client.accounts().stream().anyMatch(account -> account.getAddress().equals(wallet.getAddress())));
+        assertTrue(client.getAccounts().stream().anyMatch(account -> account.getAddress().equals(wallet.getAddress())));
     }
 
     @Test
@@ -401,8 +404,8 @@ public class NimiqClientTest {
     // Blockchain
 
     @Test
-    public void testBlockNumber() {
-        assertTrue(client.blockNumber() > 0);
+    public void testGetBlockNumber() {
+        assertTrue(client.getBlockNumber() > 0);
     }
 
     @Test
@@ -455,15 +458,15 @@ public class NimiqClientTest {
     // Misc
 
     @Test
-    public void testConstant() {
-        final long oldValue = client.constant("Mempool.SIZE_MAX"); // 50000
-        assertEquals(100000, client.constant("Mempool.SIZE_MAX", 100000));
-        assertEquals(oldValue, client.constant("Mempool.SIZE_MAX", "reset"));
+    public void testGetSetConstant() {
+        final long oldValue = client.getConstant("Mempool.SIZE_MAX"); // 50000
+        assertEquals(100000, client.setConstant("Mempool.SIZE_MAX", 100000));
+        assertEquals(oldValue, client.setConstant("Mempool.SIZE_MAX", "reset"));
     }
 
     @Test
-    public void testLog() {
-        assertTrue(client.log("*", "info"));
+    public void testSetLogLevel() {
+        assertTrue(client.setLogLevel("*", "info"));
     }
 
 }
