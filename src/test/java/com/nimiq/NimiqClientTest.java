@@ -64,10 +64,10 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testGetSyncingStatus() {
-        final SyncingStatus status = client.getSyncingStatus();
-        if (status.isSyncing()) {
-            assertTrue(status.getHighestBlock() > 0);
+    public void testGetSyncingState() {
+        final SyncingState state = client.getSyncingState();
+        if (state.isSyncing()) {
+            assertTrue(state.getHighestBlock() > 0);
         }
     }
 

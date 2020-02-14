@@ -25,14 +25,14 @@ public interface NimiqClient {
     public int getPeerCount();
 
     /**
-     * Returns an object with data about the sync status.
+     * Returns an object with data about the sync state.
      *
-     * @return An object with sync status data
+     * @return An object with sync state data
      *
      * @see <a href="https://github.com/nimiq/core-js/wiki/JSON-RPC-API#syncing">syncing</a>
      */
     @JsonRpcMethod("syncing")
-    public SyncingStatus getSyncingStatus();
+    public SyncingState getSyncingState();
 
     /**
      * Returns information on the current consensus state. 

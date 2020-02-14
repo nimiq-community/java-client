@@ -5,22 +5,22 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 /**
- * Synchronization status.
+ * Synchronization state.
  */
 @JsonInclude(Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class SyncingStatus {
+public class SyncingState {
 
     private boolean syncing;
     private int startingBlock;
     private int currentBlock;
     private int highestBlock;
 
-    public SyncingStatus() {
+    public SyncingState() {
         this.syncing = true;
     }
 
-    public SyncingStatus(boolean syncing) {
+    public SyncingState(boolean syncing) {
         this.syncing = syncing;
     }
 
@@ -71,7 +71,7 @@ public class SyncingStatus {
 
     @Override
     public String toString() {
-        return "SyncingStatus [currentBlock=" + currentBlock + ", highestBlock=" + highestBlock + ", startingBlock="
+        return "SyncingState [currentBlock=" + currentBlock + ", highestBlock=" + highestBlock + ", startingBlock="
                 + startingBlock + ", syncing=" + syncing + "]";
     }
 }
