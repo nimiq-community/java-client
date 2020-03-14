@@ -8,9 +8,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.net.MalformedURLException;
+import java.io.IOException;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -31,29 +32,36 @@ public class NimiqClientTest {
 
     private static final String RPC_URL = "http://localhost:8648/";
 
-    private static final String GENESIS_BLOCK = "0001000000000000000000000000000000000000000000"
-            + "00000000000000000000000000000000000000000000000000000000000000000000000000000000"
-            + "000000f6ba2bbf7e1478a209057000471d73fbdc28df0b717747d929cfde829c4120f62e02da3d16"
-            + "2e20fa982029dbde9cc20f6b431ab05df1764f34af4c62a4f2b33f1f010000000000015ac3185f00"
-            + "0134990001000000000000000000000000000000000000000007546573744e657400000000";
-    private static final String BURN_ADDRESS = "NQ07 0000 0000 0000 0000 0000 0000 0000 0000";
-    private static final String FAUCET_ADDRESS = "NQ02 YP68 BA76 0KR3 QY9C SF0K LP8Q THB6 LTKU";
-    private static final String VESTING_ACCOUNT_ADDRESS = "NQ74 919Y 3HK2 XFKP MM7C YF2S EUG3 PTV2 S2PF";
-    private static final String HTLC_ADDRESS = "NQ26 4XVR N8BB THR4 RB81 MF3V C5DM 49V5 7TQU";
-    private static final int BLOCK_NUMBER = 36360;
-    private static final String BLOCK_HASH = "2c9d91f8d7061f2386e4221370ed9dec53b96c9d42026f20bd8853ed74f2b2ef";
-    private static final String TX1_HASH = "69834d7b39e05a3b077124dfebde54d0ced636bc98c46ea68fbf885e34a0fbeb";
-    private static final String TX2_HASH = "eb4b690aa5daf0c416f5cd7a7b8f9d4100a865b858a23de7d99b9dcfe58086cd";
+    private static final String NULL_ADDRESS = "NQ07 0000 0000 0000 0000 0000 0000 0000 0000";
     private static final String UNKNOWN_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
+
     private static final int TX_SIZE = 138;
     private static final long MIN_FEE = TX_SIZE; // 1 luna/byte
 
     private static NimiqClient client;
 
+    private static Account testAccount;
+    private static Block testBlock;
+
     @BeforeClass
-    public static void createClient() throws MalformedURLException {
+    public static void createClient() throws IOException {
         final URL url = new URL(RPC_URL);
         client = new NimiqClientFactory(url).getClient();
+
+        // Choose the sender account
+        testAccount = client.getAccounts().stream()
+                .filter(account -> account.getBalance() > 0)
+                .sorted(Comparator.comparing(Account::getBalance).reversed())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Can't find account with enough balance"));
+
+        // Find some block with multiple transactions
+        final int headBlock = client.getBlockNumber();
+        testBlock = IntStream.range(0, headBlock)
+                .mapToObj(i -> client.getBlockByNumber(headBlock - i, true))
+                .filter(block -> block.getTransactions().size() > 1)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Can't find non-empty block"));
     }
 
     // Network
@@ -105,44 +113,28 @@ public class NimiqClientTest {
     @Test
     public void testSetPeerState() {
         // try to connect to all new nodes
-        client.getPeerList().stream().filter(peer -> peer.getAddressState() == PeerInfo.AddressState.NEW).forEach(peer -> {
-            final PeerInfo state = client.setPeerState(peer.getAddress(), "connect");
-            assertNotNull(state.getConnectionState());
-        });
+        client.getPeerList().stream()
+                .filter(peer -> peer.getAddressState() == PeerInfo.AddressState.NEW)
+                .forEach(peer -> {
+                    final PeerInfo state = client.setPeerState(peer.getAddress(), "connect");
+                    assertNotNull(state.getConnectionState());
+                });
     }
 
     // Transactions
 
-    private String getSenderAddress(final long minValue) {
-        return client.getAccounts().stream().filter(account -> account.getBalance() >= minValue).findFirst()
-                .map(Account::getAddress)
-                .orElseThrow(() -> new UnsupportedOperationException("Can't find account with enough balance"));
-    }
-
-    private OutgoingTransaction createTransaction(final String from, final String to, final long value,
-            final long fee) {
-        final OutgoingTransaction outTx = new OutgoingTransaction();
-        outTx.setFrom(from);
-        outTx.setTo(to);
-        outTx.setValue(value);
-        outTx.setFee(fee);
-        return outTx;
-    }
-
     @Test
     public void testSendRawTransaction() {
-        final String sender = getSenderAddress(100_00000);
-        final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 13_00000, MIN_FEE);
+        final OutgoingTransaction outTx = createTransaction(testAccount.getAddress(), NULL_ADDRESS, 13_00000, MIN_FEE);
 
-        String txHash = client.sendRawTransaction(client.createRawTransaction(outTx));
+        final String txHash = client.sendRawTransaction(client.createRawTransaction(outTx));
         assertNotNull(txHash);
         assertNotNull(client.getTransactionByHash(txHash));
     }
 
     @Test
     public void testCreateRawTransaction() {
-        final String sender = getSenderAddress(100_00000); // No real spending
-        final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 12_00000, MIN_FEE);
+        final OutgoingTransaction outTx = createTransaction(testAccount.getAddress(), NULL_ADDRESS, 12_00000, MIN_FEE); // No real spending
 
         final String txHex = client.createRawTransaction(outTx);
         assertNotNull(txHex);
@@ -151,30 +143,28 @@ public class NimiqClientTest {
 
     @Test
     public void testSendTransaction() {
-        final String sender = getSenderAddress(100_00000);
-        final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 10_00000, MIN_FEE);
+        final OutgoingTransaction outTx = createTransaction(testAccount.getAddress(), NULL_ADDRESS, 10_00000, MIN_FEE);
 
-        String txHash = client.sendTransaction(outTx);
+        final String txHash = client.sendTransaction(outTx);
         assertNotNull(txHash);
         assertNotNull(client.getTransactionByHash(txHash));
     }
 
     @Test
     public void testGetRawTransactionInfo() {
-        final String sender = getSenderAddress(100_00000);
-        final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 8_00000, MIN_FEE);
+        final OutgoingTransaction outTx = createTransaction(testAccount.getAddress(), NULL_ADDRESS, 8_00000, MIN_FEE);
         final String txHex = client.createRawTransaction(outTx);
 
         final Transaction txBefore = client.getRawTransactionInfo(txHex);
         assertNotNull(txBefore.getHash());
-        assertEquals(sender, txBefore.getFromAddress());
-        assertEquals(FAUCET_ADDRESS, txBefore.getToAddress());
+        assertEquals(testAccount.getAddress(), txBefore.getFromAddress());
+        assertEquals(NULL_ADDRESS, txBefore.getToAddress());
         assertEquals(8_00000, txBefore.getValue());
         assertEquals(MIN_FEE, txBefore.getFee());
         assertTrue(txBefore.isValid());
         assertFalse(txBefore.isInMempool());
 
-        String txHash = client.sendRawTransaction(txHex);
+        final String txHash = client.sendRawTransaction(txHex);
         final Transaction txAfter = client.getRawTransactionInfo(txHex);
         assertEquals(txHash, txAfter.getHash());
         assertTrue(txAfter.isValid());
@@ -184,52 +174,65 @@ public class NimiqClientTest {
     @Test
     public void testGetTransactionByBlockHashAndIndex() {
         assertNull(client.getTransactionByBlockHashAndIndex(UNKNOWN_HASH, 0));
-        assertNull(client.getTransactionByBlockHashAndIndex(BLOCK_HASH, 999));
-        assertEquals(TX1_HASH, client.getTransactionByBlockHashAndIndex(BLOCK_HASH, 0).getHash());
-        assertEquals(TX2_HASH, client.getTransactionByBlockHashAndIndex(BLOCK_HASH, 1).getHash());
+        assertNull(client.getTransactionByBlockHashAndIndex(testBlock.getHash(), 999));
+
+        final List<Transaction> txs = testBlock.getTransactions();
+        for (int idx = 0; idx > txs.size(); idx++) {
+            final Transaction tx = client.getTransactionByBlockHashAndIndex(testBlock.getHash(), idx);
+            assertEquals(txs.get(idx).getHash(), tx.getHash());
+        }
     }
 
     @Test
     public void testGetTransactionByBlockNumberAndIndex() {
-        assertNull(client.getTransactionByBlockNumberAndIndex(BLOCK_NUMBER, 999));
-        assertEquals(TX1_HASH, client.getTransactionByBlockNumberAndIndex(BLOCK_NUMBER, 0).getHash());
-        assertEquals(TX2_HASH, client.getTransactionByBlockNumberAndIndex(BLOCK_NUMBER, 1).getHash());
+        assertNull(client.getTransactionByBlockNumberAndIndex(testBlock.getNumber(), 999));
+
+        final List<Transaction> txs = testBlock.getTransactions();
+        for (int idx = 0; idx > txs.size(); idx++) {
+            final Transaction tx = client.getTransactionByBlockNumberAndIndex(testBlock.getNumber(), idx);
+            assertEquals(txs.get(idx).getHash(), tx.getHash());
+        }
     }
 
     @Test
     public void testGetTransactionByHash() {
-        assertEquals(TX1_HASH, client.getTransactionByHash(TX1_HASH).getHash());
-        assertEquals(TX2_HASH, client.getTransactionByHash(TX2_HASH).getHash());
+        testBlock.getTransactions().stream()
+                .map(Transaction::getHash)
+                .forEach(hash -> {
+                    final Transaction tx = client.getTransactionByHash(hash);
+                    assertEquals(hash, tx.getHash());
+                });
     }
 
     @Test
     public void testGetTransactionReceipt() {
         assertNull(client.getTransactionReceipt(UNKNOWN_HASH));
 
-        final TransactionReceipt receipt = client.getTransactionReceipt(TX1_HASH);
-        assertNotNull(receipt);
-        assertEquals(BLOCK_NUMBER, receipt.getBlockNumber());
-        assertEquals(BLOCK_HASH, receipt.getBlockHash());
-        assertEquals(TX1_HASH, receipt.getTransactionHash());
-        assertEquals(0, receipt.getTransactionIndex());
+        testBlock.getTransactions().forEach(tx -> {
+            final TransactionReceipt receipt = client.getTransactionReceipt(tx.getHash());
+            assertNotNull(receipt);
+            assertEquals(testBlock.getNumber(), receipt.getBlockNumber());
+            assertEquals(testBlock.getHash(), receipt.getBlockHash());
+            assertEquals(tx.getHash(), receipt.getTransactionHash());
+            assertEquals(tx.getTransactionIndex(), receipt.getTransactionIndex());
+        });
     }
 
     @Test
     public void testGetTransactionsByAddress() {
         final int limit = 100;
-        final List<Transaction> transactions = client.getTransactionsByAddress(FAUCET_ADDRESS, limit);
-        assertEquals(limit, transactions.size());
+        final List<Transaction> transactions = client.getTransactionsByAddress(testAccount.getAddress(), limit);
+        assertTrue(transactions.size() > 0 && transactions.size() <= limit);
         transactions.forEach(tx -> {
-            assertTrue(FAUCET_ADDRESS.equals(tx.getFromAddress()) || FAUCET_ADDRESS.equals(tx.getToAddress()));
+            assertTrue(testAccount.getAddress().equals(tx.getFromAddress())
+                    || testAccount.getAddress().equals(tx.getToAddress()));
         });
     }
 
     @Test
     public void testGetMempoolContent() {
-        final String sender = getSenderAddress(100_00000);
-
         // Send a test transaction first
-        final OutgoingTransaction outTx = createTransaction(sender, FAUCET_ADDRESS, 5_00000, MIN_FEE);
+        final OutgoingTransaction outTx = createTransaction(testAccount.getAddress(), NULL_ADDRESS, 5_00000, MIN_FEE);
         final String txHash = client.sendTransaction(outTx);
 
         final List<Transaction> txsWithoutDetails = client.getMempoolContent(false);
@@ -259,12 +262,10 @@ public class NimiqClientTest {
 
     @Test
     public void testGetMempool() {
-        final String sender = getSenderAddress(100_00000);
-
         // Send several transactions with different fees
-        int[] fees = { 100, 200, 500 }; // per byte
+        final int[] fees = {100, 200, 500}; // per byte
         IntStream.of(fees).forEach(fee -> {
-            client.sendTransaction(createTransaction(sender, FAUCET_ADDRESS, 3_00000, fee * MIN_FEE));
+            client.sendTransaction(createTransaction(testAccount.getAddress(), NULL_ADDRESS, 3_00000, fee * MIN_FEE));
         });
 
         final Mempool mempool = client.getMempool();
@@ -322,7 +323,7 @@ public class NimiqClientTest {
 
     @Test
     public void testGetWork() {
-        final Work work = client.getWork(BURN_ADDRESS, "");
+        final Work work = client.getWork(testAccount.getAddress(), "");
         assertNotNull(work.getData());
         assertNotNull(work.getSuffix());
         assertTrue(work.getTarget() > 0);
@@ -331,20 +332,21 @@ public class NimiqClientTest {
 
     @Test
     public void testGetBlockTemplate() {
-        final BlockTemplate template = client.getBlockTemplate(BURN_ADDRESS, "");
+        final BlockTemplate template = client.getBlockTemplate(testAccount.getAddress(), "");
         assertNotNull(template.getHeader());
         assertTrue(template.getHeader().getHeight() > 0);
         assertNotNull(template.getInterlink());
         assertNotNull(template.getBody());
         assertNotNull(template.getBody().getHash());
-        assertEquals("0000000000000000000000000000000000000000", template.getBody().getMinerAddr());
+        assertEquals(testAccount.getId(), template.getBody().getMinerAddr());
         assertTrue(template.getTarget() > 0);
         assertEquals(template.getTarget(), template.getHeader().getnBits());
     }
 
     @Test
     public void testSubmitBlock() {
-        client.submitBlock(GENESIS_BLOCK);
+        final Work work = client.getWork(testAccount.getAddress(), "");
+        client.submitBlock(work.getData() + work.getSuffix());
     }
 
     // Accounts
@@ -373,32 +375,14 @@ public class NimiqClientTest {
 
     @Test
     public void testGetBalance() {
-        assertTrue(client.getBalance(BURN_ADDRESS) > 0);
+        assertTrue(client.getBalance(testAccount.getAddress()) > 0);
     }
 
     @Test
     public void testGetAccount() {
-        final Account basicAccount = client.getAccount(BURN_ADDRESS);
+        final Account basicAccount = client.getAccount(testAccount.getAddress());
         assertEquals(Account.Type.BASIC, basicAccount.getType());
         assertTrue(basicAccount.getBalance() > 0);
-
-        final Account vestingAccount = client.getAccount(VESTING_ACCOUNT_ADDRESS);
-        assertEquals(Account.Type.VESTING, vestingAccount.getType());
-        assertTrue(vestingAccount.getBalance() > 0);
-        assertNotNull(vestingAccount.getOwnerAddress());
-        assertTrue(vestingAccount.getVestingStart() > 0);
-        assertTrue(vestingAccount.getVestingStepBlocks() > 0);
-        assertTrue(vestingAccount.getVestingStepAmount() > 0);
-        assertTrue(vestingAccount.getVestingTotalAmount() > 0);
-
-        final Account htlcAccount = client.getAccount(HTLC_ADDRESS);
-        assertEquals(Account.Type.HTLC, htlcAccount.getType());
-        assertTrue(htlcAccount.getBalance() > 0);
-        assertNotNull(htlcAccount.getSenderAddress());
-        assertNotNull(htlcAccount.getRecipientAddress());
-        assertNotNull(htlcAccount.getHashRoot());
-        assertTrue(htlcAccount.getHashCount() > 0);
-        assertTrue(htlcAccount.getTotalAmount() > 0);
     }
 
     // Blockchain
@@ -411,47 +395,53 @@ public class NimiqClientTest {
     @Test
     public void testGetBlockTransactionCountByHash() {
         assertNull(client.getBlockTransactionCountByHash(UNKNOWN_HASH));
-        assertEquals(Integer.valueOf(2), client.getBlockTransactionCountByHash(BLOCK_HASH));
+        assertEquals(Integer.valueOf(testBlock.getTransactions().size()),
+                client.getBlockTransactionCountByHash(testBlock.getHash()));
     }
 
     @Test
     public void testGetBlockTransactionCountByNumber() {
-        assertEquals(Integer.valueOf(2), client.getBlockTransactionCountByNumber(BLOCK_NUMBER));
+        assertEquals(Integer.valueOf(testBlock.getTransactions().size()),
+                client.getBlockTransactionCountByNumber(testBlock.getNumber()));
     }
 
     @Test
     public void testGetBlockByHash() {
         assertNull(client.getBlockByHash(UNKNOWN_HASH, false));
 
-        final Block blockWithoutTx = client.getBlockByHash(BLOCK_HASH, false);
-        assertEquals(BLOCK_HASH, blockWithoutTx.getHash());
+        final String blockHash = testBlock.getHash();
+
+        final Block blockWithoutTx = client.getBlockByHash(blockHash, false);
+        assertEquals(blockHash, blockWithoutTx.getHash());
         assertFalse(blockWithoutTx.getTransactions().isEmpty());
         blockWithoutTx.getTransactions().forEach(tx -> {
             assertNull(tx.getBlockHash());
         });
 
-        final Block blockWithTxs = client.getBlockByHash(BLOCK_HASH, true);
-        assertEquals(BLOCK_HASH, blockWithoutTx.getHash());
+        final Block blockWithTxs = client.getBlockByHash(blockHash, true);
+        assertEquals(blockHash, blockWithoutTx.getHash());
         assertFalse(blockWithTxs.getTransactions().isEmpty());
         blockWithTxs.getTransactions().forEach(tx -> {
-            assertEquals(BLOCK_HASH, tx.getBlockHash());
+            assertEquals(blockHash, tx.getBlockHash());
         });
     }
 
     @Test
     public void testGetBlockByNumber() {
-        final Block blockWithoutTx = client.getBlockByNumber(BLOCK_NUMBER, false);
-        assertEquals(BLOCK_NUMBER, blockWithoutTx.getNumber());
+        final int blockNumber = testBlock.getNumber();
+
+        final Block blockWithoutTx = client.getBlockByNumber(blockNumber, false);
+        assertEquals(blockNumber, blockWithoutTx.getNumber());
         assertFalse(blockWithoutTx.getTransactions().isEmpty());
         blockWithoutTx.getTransactions().forEach(tx -> {
             assertTrue(tx.getBlockNumber() == 0);
         });
 
-        final Block blockWithTxs = client.getBlockByNumber(BLOCK_NUMBER, true);
-        assertEquals(BLOCK_NUMBER, blockWithTxs.getNumber());
+        final Block blockWithTxs = client.getBlockByNumber(blockNumber, true);
+        assertEquals(blockNumber, blockWithTxs.getNumber());
         assertFalse(blockWithTxs.getTransactions().isEmpty());
         blockWithTxs.getTransactions().forEach(tx -> {
-            assertEquals(BLOCK_NUMBER, tx.getBlockNumber());
+            assertEquals(blockNumber, tx.getBlockNumber());
         });
     }
 
@@ -469,4 +459,23 @@ public class NimiqClientTest {
         assertTrue(client.setLogLevel("*", "info"));
     }
 
+    private static OutgoingTransaction createTransaction(final String from, final Account.Type fromType,
+            final String to, final Account.Type toType,
+            final long value, final long fee, String data, int flags) {
+        final OutgoingTransaction outTx = new OutgoingTransaction();
+        outTx.setFrom(from);
+        outTx.setFromType(fromType);
+        outTx.setTo(to);
+        outTx.setToType(toType);
+        outTx.setValue(value);
+        outTx.setFee(fee);
+        outTx.setData(data);
+        outTx.setFlags(flags);
+        return outTx;
+    }
+
+    private static OutgoingTransaction createTransaction(final String from, final String to,
+            final long value, final long fee) {
+        return createTransaction(from, Account.Type.BASIC, to, Account.Type.BASIC, value, fee, null, 0);
+    }
 }
