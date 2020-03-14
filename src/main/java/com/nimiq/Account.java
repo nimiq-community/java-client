@@ -2,6 +2,7 @@ package com.nimiq;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 /**
@@ -13,6 +14,11 @@ public class Account {
 
     public enum Type {
         BASIC, VESTING, HTLC;
+
+        @JsonValue
+        public int toValue() {
+            return ordinal();
+        }
     }
 
     private String id;

@@ -18,6 +18,7 @@ public class OutgoingTransaction {
     private long value;
     private long fee;
     private String data;
+    private int flags;
 
     /**
      * @return The address the transaction is send from.
@@ -98,9 +99,20 @@ public class OutgoingTransaction {
         this.data = data;
     }
 
+    /**
+     * @return Bit-encoded transaction flags.
+     */
+    public int getFlags() {
+        return flags;
+    }
+
+    public void setFlags(int flags) {
+        this.flags = flags;
+    }
+
     @Override
     public String toString() {
-        return "OutgoingTransaction [data=" + data + ", fee=" + fee + ", from=" + from + ", fromType=" + fromType
-                + ", to=" + to + ", toType=" + toType + ", value=" + value + "]";
+        return "OutgoingTransaction [data=" + data + ", fee=" + fee + ", flags=" + flags + ", from=" + from
+                + ", fromType=" + fromType + ", to=" + to + ", toType=" + toType + ", value=" + value + "]";
     }
 }
