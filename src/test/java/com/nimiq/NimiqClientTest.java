@@ -379,10 +379,72 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testGetAccount() {
+    public void testGetAccount() throws InterruptedException {
         final Account basicAccount = client.getAccount(testAccount.getAddress());
         assertEquals(Account.Type.BASIC, basicAccount.getType());
         assertTrue(basicAccount.getBalance() > 0);
+
+        // Create and test contracts
+        final int headBlockNumber = client.getBlockNumber();
+
+        // Vesting contract
+        final int vestingStart = headBlockNumber + 100;
+        final int vestingStepBlocks = 10;
+        final long vestingStepAmount = 10_00000;
+        final long vestingTotalAmount = 100_00000;
+
+        final String vestingData = String.format("%s%08x%08x%016x%016x",
+                testAccount.getId(), vestingStart, vestingStepBlocks, vestingStepAmount, vestingTotalAmount);
+        final String vestingTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
+                Account.Type.BASIC, null, Account.Type.VESTING, vestingTotalAmount, 0, vestingData, 1));
+
+        // HTLC
+        final int htlcTimeout = headBlockNumber + 100;
+        final int htlcHashAlgo = 3; // sha256
+        final String htlcHashRoot = "044f73e46055282eec3a7ee5d27c621e1251eb6ed817a43613d25009cce54025"; // sha256(sha256('Nimiq'))
+        final int htlcHashCount = 1;
+        final long htlcTotalAmount = 100_00000;
+
+        final String htlcData = String.format("%s%s%02x%s%02x%08x",
+                testAccount.getId(), testAccount.getId(), htlcHashAlgo, htlcHashRoot, htlcHashCount, htlcTimeout);
+        final String htlcTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
+                Account.Type.BASIC, null, Account.Type.HTLC, htlcTotalAmount, 0, htlcData, 1));
+
+        // Wait until contract transactions are mined
+        Transaction vestingTx;
+        Transaction htlcTx;
+        final long pollInterval = 30_000; // 30 seconds
+        final long txMiningTimeout = 300_000 + System.currentTimeMillis(); // 5 minutes
+
+        do {
+            Thread.sleep(pollInterval);
+            vestingTx = client.getTransactionByHash(vestingTxHash);
+            htlcTx = client.getTransactionByHash(htlcTxHash);
+            if (vestingTx.getConfirmations() > 0 && htlcTx.getConfirmations() > 0) {
+                break;
+            }
+        } while (System.currentTimeMillis() < txMiningTimeout);
+
+        assertTrue("Vesting transaction was not mined", vestingTx.getConfirmations() > 0);
+        assertTrue("HTLC transaction was not mined", htlcTx.getConfirmations() > 0);
+
+        final Account vestingAccount = client.getAccount(vestingTx.getTo());
+        assertEquals(Account.Type.VESTING, vestingAccount.getType());
+        assertEquals(vestingTotalAmount, vestingAccount.getBalance());
+        assertEquals(testAccount.getAddress(), vestingAccount.getOwnerAddress());
+        assertEquals(vestingStart, vestingAccount.getVestingStart());
+        assertEquals(vestingStepBlocks, vestingAccount.getVestingStepBlocks());
+        assertEquals(vestingStepAmount, vestingAccount.getVestingStepAmount());
+        assertEquals(vestingTotalAmount, vestingAccount.getVestingTotalAmount());
+
+        final Account htlcAccount = client.getAccount(htlcTx.getTo());
+        assertEquals(Account.Type.HTLC, htlcAccount.getType());
+        assertEquals(htlcTotalAmount, htlcAccount.getBalance());
+        assertEquals(testAccount.getAddress(), htlcAccount.getSenderAddress());
+        assertEquals(testAccount.getAddress(), htlcAccount.getRecipientAddress());
+        assertEquals(htlcHashRoot, htlcAccount.getHashRoot());
+        assertEquals(htlcHashCount, htlcAccount.getHashCount());
+        assertEquals(htlcTotalAmount, htlcAccount.getTotalAmount());
     }
 
     // Blockchain
