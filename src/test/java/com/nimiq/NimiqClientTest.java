@@ -8,11 +8,12 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.junit.BeforeClass;
@@ -38,13 +39,31 @@ public class NimiqClientTest {
     private static final int TX_SIZE = 138;
     private static final long MIN_FEE = TX_SIZE; // 1 luna/byte
 
+    private static final int TEST_TXS = 10;
+    private static final long POLL_INTERVAL = 30_000;
+    private static final long TX_MINING_TIMEOUT = 300_000;
+
+    private static final int VESTING_START = 1000; // head + 1000
+    private static final int VESTING_STEP_BLOCKS = 10;
+    private static final long VESTING_STEP_AMOUNT = 10_00000;
+    private static final long VESTING_TOTAL_AMOUNT = 100_00000;
+
+    private static final int HTLC_TIMEOUT = 1000; // head + 10000
+    private static final int HTLC_HASH_ALGO = 3; // sha256
+    private static final String HTLC_HASH_ROOT = "044f73e46055282eec3a7ee5d27c621e1251eb6ed817a43613d25009cce54025"; // sha256(sha256('Nimiq'))
+    private static final int HTLC_HASH_COUNT = 1;
+    private static final long HTLC_TOTAL_AMOUNT = 100_00000;
+
     private static NimiqClient client;
 
     private static Account testAccount;
+    private static List<Transaction> basicTxs;
+    private static Transaction vestingTx;
+    private static Transaction htlcTx;
     private static Block testBlock;
 
     @BeforeClass
-    public static void createClient() throws IOException {
+    public static void setUp() throws MalformedURLException, InterruptedException {
         final URL url = new URL(RPC_URL);
         client = new NimiqClientFactory(url).getClient();
 
@@ -55,10 +74,52 @@ public class NimiqClientTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Can't find account with enough balance"));
 
+        final int headBlockNumber = client.getBlockNumber();
+
+        // Send test transactions
+        List<String> basicTxHashes = IntStream.rangeClosed(1, TEST_TXS)
+                .mapToObj(i -> client.sendTransaction(
+                        createTransaction(testAccount.getAddress(), NULL_ADDRESS, i * 1_00000, MIN_FEE)))
+                .collect(Collectors.toList());
+
+        // Vesting contract
+        final int vestingStart = headBlockNumber + VESTING_START;
+        final String vestingData = String.format("%s%08x%08x%016x%016x",
+                testAccount.getId(), vestingStart, VESTING_STEP_BLOCKS, VESTING_STEP_AMOUNT, VESTING_TOTAL_AMOUNT);
+        final String vestingTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
+                Account.Type.BASIC, null, Account.Type.VESTING, VESTING_TOTAL_AMOUNT, 0, vestingData, 1));
+
+        // HTLC
+        final int htlcTimeout = headBlockNumber + HTLC_TIMEOUT;
+        final String htlcData = String.format("%s%s%02x%s%02x%08x",
+                testAccount.getId(), testAccount.getId(), HTLC_HASH_ALGO, HTLC_HASH_ROOT, HTLC_HASH_COUNT, htlcTimeout);
+        final String htlcTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
+                Account.Type.BASIC, null, Account.Type.HTLC, HTLC_TOTAL_AMOUNT, 0, htlcData, 1));
+
+        // Wait until all transactions are mined
+        final long timeout = TX_MINING_TIMEOUT + System.currentTimeMillis(); // 5 minutes
+        do {
+            Thread.sleep(POLL_INTERVAL);
+
+            basicTxs = basicTxHashes.stream().map(client::getTransactionByHash).collect(Collectors.toList());
+            vestingTx = client.getTransactionByHash(vestingTxHash);
+            htlcTx = client.getTransactionByHash(htlcTxHash);
+
+            final boolean allTxsMined = (basicTxs.stream().allMatch(tx -> tx.getConfirmations() > 0))
+                    && (vestingTx.getConfirmations() > 0)
+                    && (htlcTx.getConfirmations() > 0);
+
+            if (allTxsMined) {
+                break;
+            }
+            if (timeout < System.currentTimeMillis()) {
+                throw new AssertionError("Transactions were not mined");
+            }
+        } while (true);
+
         // Find some block with multiple transactions
-        final int headBlock = client.getBlockNumber();
-        testBlock = IntStream.range(0, headBlock)
-                .mapToObj(i -> client.getBlockByNumber(headBlock - i, true))
+        testBlock = IntStream.range(0, headBlockNumber)
+                .mapToObj(i -> client.getBlockByNumber(headBlockNumber - i, true))
                 .filter(block -> block.getTransactions().size() > 1)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Can't find non-empty block"));
@@ -176,45 +237,44 @@ public class NimiqClientTest {
         assertNull(client.getTransactionByBlockHashAndIndex(UNKNOWN_HASH, 0));
         assertNull(client.getTransactionByBlockHashAndIndex(testBlock.getHash(), 999));
 
-        final List<Transaction> txs = testBlock.getTransactions();
-        for (int idx = 0; idx > txs.size(); idx++) {
-            final Transaction tx = client.getTransactionByBlockHashAndIndex(testBlock.getHash(), idx);
-            assertEquals(txs.get(idx).getHash(), tx.getHash());
-        }
+        basicTxs.forEach(tx1 -> {
+            final Transaction tx2 =
+                    client.getTransactionByBlockHashAndIndex(tx1.getBlockHash(), tx1.getTransactionIndex());
+            assertEquals(tx1.getHash(), tx2.getHash());
+        });
     }
 
     @Test
     public void testGetTransactionByBlockNumberAndIndex() {
         assertNull(client.getTransactionByBlockNumberAndIndex(testBlock.getNumber(), 999));
 
-        final List<Transaction> txs = testBlock.getTransactions();
-        for (int idx = 0; idx > txs.size(); idx++) {
-            final Transaction tx = client.getTransactionByBlockNumberAndIndex(testBlock.getNumber(), idx);
-            assertEquals(txs.get(idx).getHash(), tx.getHash());
-        }
+        basicTxs.forEach(tx1 -> {
+            final Transaction tx2 =
+                    client.getTransactionByBlockNumberAndIndex(tx1.getBlockNumber(), tx1.getTransactionIndex());
+            assertEquals(tx1.getHash(), tx2.getHash());
+        });
     }
 
     @Test
     public void testGetTransactionByHash() {
-        testBlock.getTransactions().stream()
-                .map(Transaction::getHash)
-                .forEach(hash -> {
-                    final Transaction tx = client.getTransactionByHash(hash);
-                    assertEquals(hash, tx.getHash());
-                });
+        basicTxs.forEach(tx1 -> {
+            final Transaction tx2 = client.getTransactionByHash(tx1.getHash());
+            assertEquals(tx1.getHash(), tx2.getHash());
+        });
     }
 
     @Test
     public void testGetTransactionReceipt() {
         assertNull(client.getTransactionReceipt(UNKNOWN_HASH));
 
-        testBlock.getTransactions().forEach(tx -> {
+        basicTxs.forEach(tx -> {
             final TransactionReceipt receipt = client.getTransactionReceipt(tx.getHash());
             assertNotNull(receipt);
-            assertEquals(testBlock.getNumber(), receipt.getBlockNumber());
-            assertEquals(testBlock.getHash(), receipt.getBlockHash());
             assertEquals(tx.getHash(), receipt.getTransactionHash());
+            assertEquals(tx.getBlockNumber(), receipt.getBlockNumber());
+            assertEquals(tx.getBlockHash(), receipt.getBlockHash());
             assertEquals(tx.getTransactionIndex(), receipt.getTransactionIndex());
+            assertTrue(receipt.getConfirmations() > 0);
         });
     }
 
@@ -379,72 +439,33 @@ public class NimiqClientTest {
     }
 
     @Test
-    public void testGetAccount() throws InterruptedException {
+    public void testGetAccount() {
         final Account basicAccount = client.getAccount(testAccount.getAddress());
         assertEquals(Account.Type.BASIC, basicAccount.getType());
         assertTrue(basicAccount.getBalance() > 0);
 
-        // Create and test contracts
         final int headBlockNumber = client.getBlockNumber();
-
-        // Vesting contract
-        final int vestingStart = headBlockNumber + 100;
-        final int vestingStepBlocks = 10;
-        final long vestingStepAmount = 10_00000;
-        final long vestingTotalAmount = 100_00000;
-
-        final String vestingData = String.format("%s%08x%08x%016x%016x",
-                testAccount.getId(), vestingStart, vestingStepBlocks, vestingStepAmount, vestingTotalAmount);
-        final String vestingTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
-                Account.Type.BASIC, null, Account.Type.VESTING, vestingTotalAmount, 0, vestingData, 1));
-
-        // HTLC
-        final int htlcTimeout = headBlockNumber + 100;
-        final int htlcHashAlgo = 3; // sha256
-        final String htlcHashRoot = "044f73e46055282eec3a7ee5d27c621e1251eb6ed817a43613d25009cce54025"; // sha256(sha256('Nimiq'))
-        final int htlcHashCount = 1;
-        final long htlcTotalAmount = 100_00000;
-
-        final String htlcData = String.format("%s%s%02x%s%02x%08x",
-                testAccount.getId(), testAccount.getId(), htlcHashAlgo, htlcHashRoot, htlcHashCount, htlcTimeout);
-        final String htlcTxHash = client.sendTransaction(createTransaction(testAccount.getAddress(),
-                Account.Type.BASIC, null, Account.Type.HTLC, htlcTotalAmount, 0, htlcData, 1));
-
-        // Wait until contract transactions are mined
-        Transaction vestingTx;
-        Transaction htlcTx;
-        final long pollInterval = 30_000; // 30 seconds
-        final long txMiningTimeout = 300_000 + System.currentTimeMillis(); // 5 minutes
-
-        do {
-            Thread.sleep(pollInterval);
-            vestingTx = client.getTransactionByHash(vestingTxHash);
-            htlcTx = client.getTransactionByHash(htlcTxHash);
-            if (vestingTx.getConfirmations() > 0 && htlcTx.getConfirmations() > 0) {
-                break;
-            }
-        } while (System.currentTimeMillis() < txMiningTimeout);
-
-        assertTrue("Vesting transaction was not mined", vestingTx.getConfirmations() > 0);
-        assertTrue("HTLC transaction was not mined", htlcTx.getConfirmations() > 0);
 
         final Account vestingAccount = client.getAccount(vestingTx.getTo());
         assertEquals(Account.Type.VESTING, vestingAccount.getType());
-        assertEquals(vestingTotalAmount, vestingAccount.getBalance());
+        assertEquals(VESTING_TOTAL_AMOUNT, vestingAccount.getBalance());
         assertEquals(testAccount.getAddress(), vestingAccount.getOwnerAddress());
-        assertEquals(vestingStart, vestingAccount.getVestingStart());
-        assertEquals(vestingStepBlocks, vestingAccount.getVestingStepBlocks());
-        assertEquals(vestingStepAmount, vestingAccount.getVestingStepAmount());
-        assertEquals(vestingTotalAmount, vestingAccount.getVestingTotalAmount());
+        assertTrue(headBlockNumber < vestingAccount.getVestingStart()
+                && vestingAccount.getVestingStart() < headBlockNumber + VESTING_START);
+        assertEquals(VESTING_STEP_BLOCKS, vestingAccount.getVestingStepBlocks());
+        assertEquals(VESTING_STEP_AMOUNT, vestingAccount.getVestingStepAmount());
+        assertEquals(VESTING_TOTAL_AMOUNT, vestingAccount.getVestingTotalAmount());
 
         final Account htlcAccount = client.getAccount(htlcTx.getTo());
         assertEquals(Account.Type.HTLC, htlcAccount.getType());
-        assertEquals(htlcTotalAmount, htlcAccount.getBalance());
+        assertEquals(HTLC_TOTAL_AMOUNT, htlcAccount.getBalance());
         assertEquals(testAccount.getAddress(), htlcAccount.getSenderAddress());
         assertEquals(testAccount.getAddress(), htlcAccount.getRecipientAddress());
-        assertEquals(htlcHashRoot, htlcAccount.getHashRoot());
-        assertEquals(htlcHashCount, htlcAccount.getHashCount());
-        assertEquals(htlcTotalAmount, htlcAccount.getTotalAmount());
+        assertEquals(HTLC_HASH_ROOT, htlcAccount.getHashRoot());
+        assertEquals(HTLC_HASH_COUNT, htlcAccount.getHashCount());
+        assertEquals(HTLC_TOTAL_AMOUNT, htlcAccount.getTotalAmount());
+        assertTrue(headBlockNumber < htlcAccount.getTimeout()
+                && htlcAccount.getTimeout() < headBlockNumber + HTLC_TIMEOUT);
     }
 
     // Blockchain
