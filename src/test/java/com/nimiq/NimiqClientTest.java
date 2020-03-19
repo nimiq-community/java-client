@@ -237,7 +237,7 @@ public class NimiqClientTest {
         assertNull(client.getTransactionByBlockHashAndIndex(UNKNOWN_HASH, 0));
         assertNull(client.getTransactionByBlockHashAndIndex(testBlock.getHash(), 999));
 
-        basicTxs.forEach(tx1 -> {
+        testBlock.getTransactions().forEach(tx1 -> {
             final Transaction tx2 =
                     client.getTransactionByBlockHashAndIndex(tx1.getBlockHash(), tx1.getTransactionIndex());
             assertEquals(tx1.getHash(), tx2.getHash());
@@ -248,7 +248,7 @@ public class NimiqClientTest {
     public void testGetTransactionByBlockNumberAndIndex() {
         assertNull(client.getTransactionByBlockNumberAndIndex(testBlock.getNumber(), 999));
 
-        basicTxs.forEach(tx1 -> {
+        testBlock.getTransactions().forEach(tx1 -> {
             final Transaction tx2 =
                     client.getTransactionByBlockNumberAndIndex(tx1.getBlockNumber(), tx1.getTransactionIndex());
             assertEquals(tx1.getHash(), tx2.getHash());
@@ -273,7 +273,6 @@ public class NimiqClientTest {
             assertEquals(tx.getHash(), receipt.getTransactionHash());
             assertEquals(tx.getBlockNumber(), receipt.getBlockNumber());
             assertEquals(tx.getBlockHash(), receipt.getBlockHash());
-            assertEquals(tx.getTransactionIndex(), receipt.getTransactionIndex());
             assertTrue(receipt.getConfirmations() > 0);
         });
     }
