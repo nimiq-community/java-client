@@ -71,7 +71,7 @@ mvn test
 This implementation was originally contributed by [Mat (a.k.a. Tomkha)](https://github.com/tomkha/).
 
 Please send your contributions as pull requests.
-Refer to the [issue tracker](issues) for ideas.
+Refer to the [issue tracker](https://github.com/nimiq-community/java-client/issues) for ideas.
 
 ## License
 
