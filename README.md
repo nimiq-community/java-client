@@ -75,4 +75,4 @@ Refer to the [issue tracker](https://github.com/nimiq-community/java-client/issu
 
 ## License
 
-[Apache 2.0](LICENSE.md)
+[Apache 2.0](LICENSE)
