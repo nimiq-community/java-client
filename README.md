@@ -58,10 +58,13 @@ mvn -DskipTests source:jar javadoc:jar install
 ## Test
 
 You need a test Nimiq node started like this:
+
 ```
 nodejs index.js --protocol=dumb --type=full --network=test --rpc
 ```
+
 There must be a wallet funded with a few hundred NIM. To run the test:
+
 ```
 mvn test
 ```
