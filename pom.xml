@@ -17,7 +17,7 @@
     <maven.compiler.target>1.8</maven.compiler.target>
 
     <jsonrpc4j.version>1.5.3</jsonrpc4j.version>
-    <jackson.version>2.12.1</jackson.version>
+    <jackson.version>2.12.7.1</jackson.version>
     <slf4j.version>1.7.29</slf4j.version>
     <junit.version>4.13.1</junit.version>
   </properties>
