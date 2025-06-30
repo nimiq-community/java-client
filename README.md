@@ -2,6 +2,11 @@
 
 > Java implementation of the Nimiq RPC client specs.
 
+This repository is archived: Nimiq PoS has been launched and this RPC client only supports the
+old PoW RPC specification. As of now, there is no Java RPC client implementation. Please
+[contact us](mailto:community@nimiq.com) if you are interested in implementing and supporting the
+Nimiq ecosystem for Java.
+
 ## Usage
 
 Here's a simple example that reports the info about the current head block and its miner account:
